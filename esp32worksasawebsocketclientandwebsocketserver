@@ -313,3 +313,23 @@ void loop() {
     webSocket.loop();
 }
 
+#STep-4 this is my flask websocket server which will listen the websocket client which is esp32
+from flask import Flask, render_template
+from flask_socketio import SocketIO, send
+
+app = Flask(__name__)
+socketio = SocketIO(app)
+
+@app.route('/')
+def index():
+    return "Welcome to JP Learning WebSocket Server"
+
+@socketio.on('message')
+def handle_message(message):
+    print(f"Received message: {message}")
+    # Here you can process the message as needed
+    send("Message received")
+
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port=80)
+
