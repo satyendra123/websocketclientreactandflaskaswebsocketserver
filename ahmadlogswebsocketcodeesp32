@@ -198,6 +198,129 @@ String Load_DHT11_Data() {
 }
 
 
+# using the micropython
+import network
+import ujson as json
+import machine
+import dht
+from time import sleep
+from machine import Pin
+import usocket as socket
+import websocket
+
+# WiFi credentials
+ssid = 'ENTER_SSID'
+password = 'ENTER_PASSWORD'
+
+# WebSocket server
+websocket_server = 'ws://IP_ADDRESS:PORT/'
+
+# Initialize DHT11 sensor
+dht_pin = Pin(19)
+dht_sensor = dht.DHT11(dht_pin)
+
+# Initialize LED and button
+led_pin = Pin(2, Pin.OUT)
+button_pin = Pin(27, Pin.IN, Pin.PULL_UP)
+
+# Global variables
+led_state = False
+connected = False
+
+# Connect to WiFi
+def connect_wifi():
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    wlan.disconnect()
+    wlan.connect(ssid, password)
+
+    while not wlan.isconnected():
+        sleep(0.5)
+        print("Connecting to WiFi...")
+    print("Connected to WiFi")
+    print("IP Address:", wlan.ifconfig()[0])
+
+# Connect to WebSocket
+def connect_websocket():
+    global ws
+    ws = websocket.websocket()
+    try:
+        ws.connect(websocket_server)
+        print("Connected to WebSocket server")
+        return True
+    except:
+        print("Connection to WebSocket server failed")
+        return False
+
+# Handle incoming WebSocket messages
+def handle_message(message):
+    try:
+        data = json.loads(message)
+        msg = data.get('msg')
+        sensor = data.get('sensor')
+        receiver = data.get('receiver')
+        sender = data.get('sender')
+
+        print("msg =", msg)
+        print("sensor =", sensor)
+        print("receiver =", receiver)
+        print("sender =", sender)
+
+        if receiver == "esp" and sensor == "led":
+            global led_state
+            led_state = bool(int(msg))
+            led_pin.value(led_state)
+            print("LED controlled")
+
+    except Exception as e:
+        print("Error handling message:", e)
+
+# Send DHT11 data
+def send_dht11_data():
+    try:
+        dht_sensor.measure()
+        temperature = dht_sensor.temperature()
+        humidity = dht_sensor.humidity()
+        data = "{},{}:dht:localhost:esp".format(temperature, humidity)
+        ws.send(data)
+        print("Temperature:", temperature, "°C")
+        print("Humidity:", humidity, "%")
+    except Exception as e:
+        print("Failed to read from DHT sensor:", e)
+
+# Main loop
+def main():
+    global connected, led_state
+    connect_wifi()
+
+    connected = connect_websocket()
+
+    while True:
+        if connected:
+            try:
+                message = ws.recv()
+                if message:
+                    handle_message(message)
+            except Exception as e:
+                print("WebSocket error:", e)
+                connected = False
+
+            if button_pin.value() == 0:
+                led_state = not led_state
+                led_pin.value(led_state)
+                sleep(0.2)  # Debounce the button
+                ws.send("{}:led:localhost:esp".format(int(led_state)))
+
+            send_dht11_data()
+            sleep(2)
+
+        else:
+            print("Attempting to reconnect to WebSocket server...")
+            connected = connect_websocket()
+            sleep(5)
+
+if __name__ == "__main__":
+    main()
 
 EX-2/*************************************************************************************************
  *  Created By: Tauseef Ahmad
